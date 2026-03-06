@@ -1,0 +1,8 @@
+node_modules/
+.git/
+.env
+backend/venv/
+backend/__pycache__/
+frontend/dist/
+backend/static/
+.DS_Store
