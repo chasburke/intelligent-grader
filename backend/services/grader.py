@@ -42,7 +42,7 @@ async def grade_submission(
     **Instructions to Grader:**
     {instructions}
     
-    **Student Written Report Submission:**
+    **Student Submission (Document, Text, or Extracted Link Content):**
     {student_text}
     """
     

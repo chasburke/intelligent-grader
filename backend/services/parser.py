@@ -2,6 +2,73 @@ import io
 import pandas as pd
 from fastapi import UploadFile, HTTPException
 from docx import Document
+import requests
+from bs4 import BeautifulSoup
+
+# Try importing Playwright, but make it optional so the app doesn't crash if it's missing during setup
+try:
+    from playwright.async_api import async_playwright
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+
+
+async def parse_url(url: str) -> str:
+    """Extracts text content from a given URL.
+    Special handling is provided for Gemini share links which may need Playwright."""
+    
+    if not url.startswith('http'):
+        url = 'https://' + url
+
+    try:
+        # First attempt: Simple HTTP GET request (fastest)
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.extract()
+            
+        text = soup.get_text(separator='\n')
+        
+        # Clean up whitespace
+        lines = (line.strip() for line in text.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        text = '\n'.join(chunk for chunk in chunks if chunk)
+        
+        # For Gemini share links (g.co/gemini/share or gemini.google.com/share), 
+        # the content might be dynamically loaded. If the text seems too short 
+        # or doesn't contain the expected content, try Playwright.
+        if ('gemini' in url and len(text) < 500) and PLAYWRIGHT_AVAILABLE:
+            return await parse_url_with_playwright(url)
+            
+        return text
+
+    except Exception as e:
+        # Fallback to Playwright if standard requests fail
+        if PLAYWRIGHT_AVAILABLE:
+            return await parse_url_with_playwright(url)
+        raise HTTPException(status_code=400, detail=f"Error parsing URL {url}: {str(e)}")
+
+
+async def parse_url_with_playwright(url: str) -> str:
+    """Fallback method using Playwright to render JavaScript-heavy pages."""
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(url, wait_until='networkidle', timeout=15000)
+            
+            # Extract text from the body
+            content = await page.evaluate("document.body.innerText")
+            await browser.close()
+            return content
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Playwright rendering failed for {url}: {str(e)}")
+
 
 async def parse_document(file: UploadFile) -> str:
     """Extracts text content from a .docx or .txt file."""

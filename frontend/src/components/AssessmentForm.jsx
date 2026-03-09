@@ -1,39 +1,48 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { FileText, Table, UploadCloud, X } from 'lucide-react';
+import { FileText, Table, UploadCloud, X, Link as LinkIcon } from 'lucide-react';
 
 export default function AssessmentForm({ onSubmit, isLoading }) {
-  const [objectives, setObjectives] = useState('');
-  const [rubric, setRubric] = useState('');
-  const [instructions, setInstructions] = useState('');
-  const [docFile, setDocFile] = useState(null);
+  const [objectivesText, setObjectivesText] = useState('');
+  const [objectivesFile, setObjectivesFile] = useState(null);
+
+  const [rubricText, setRubricText] = useState('');
+  const [rubricFile, setRubricFile] = useState(null);
+
+  const [instructionsText, setInstructionsText] = useState('');
+  const [instructionsFile, setInstructionsFile] = useState(null);
+
+  const [submissionText, setSubmissionText] = useState('');
+  const [submissionFile, setSubmissionFile] = useState(null);
+
   const [spreadsheetFile, setSpreadsheetFile] = useState(null);
 
-  // Dropzone for text documents
-  const onDropDoc = useCallback(acceptedFiles => {
-    if (acceptedFiles?.length > 0) {
-      setDocFile(acceptedFiles[0]);
-    }
-  }, []);
+  // Reusable dropzone configured for standard text/documents
+  const useDocDropzone = (setFile) => {
+    const onDrop = useCallback(acceptedFiles => {
+      if (acceptedFiles?.length > 0) setFile(acceptedFiles[0]);
+    }, [setFile]);
+    
+    return useDropzone({
+      onDrop,
+      accept: {
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+        'text/plain': ['.txt']
+      },
+      maxFiles: 1
+    });
+  };
 
-  const { getRootProps: getDocProps, getInputProps: getDocInputProps, isDragActive: isDocActive } = useDropzone({
-    onDrop: onDropDoc,
-    accept: {
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'text/plain': ['.txt']
-    },
-    maxFiles: 1
-  });
+  const objDrop = useDocDropzone(setObjectivesFile);
+  const rubDrop = useDocDropzone(setRubricFile);
+  const instDrop = useDocDropzone(setInstructionsFile);
+  const subDrop = useDocDropzone(setSubmissionFile);
 
   // Dropzone for spreadsheets
-  const onDropSpreadsheet = useCallback(acceptedFiles => {
-    if (acceptedFiles?.length > 0) {
-      setSpreadsheetFile(acceptedFiles[0]);
-    }
-  }, []);
-
   const { getRootProps: getSheetProps, getInputProps: getSheetInputProps, isDragActive: isSheetActive } = useDropzone({
-    onDrop: onDropSpreadsheet,
+    onDrop: useCallback(acceptedFiles => {
+      if (acceptedFiles?.length > 0) setSpreadsheetFile(acceptedFiles[0]);
+    }, []),
     accept: {
       'text/csv': ['.csv'],
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
@@ -43,91 +52,126 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!docFile || !objectives || !rubric) {
-      alert("Please provide at least a Document, Learning Objectives, and a Rubric.");
+    if ((!submissionText && !submissionFile) || (!objectivesText && !objectivesFile) || (!rubricText && !rubricFile)) {
+      alert("Please provide at least Learning Objectives, a Rubric, and a Submission (either as text/link or file upload).");
       return;
     }
 
     const formData = new FormData();
-    formData.append('learning_objectives', objectives);
-    formData.append('rubric', rubric);
-    formData.append('instructions', instructions || 'Assess the submission strictly against the rubric.');
-    formData.append('document', docFile);
-    if (spreadsheetFile) {
-      formData.append('spreadsheet', spreadsheetFile);
-    }
+    formData.append('learning_objectives', objectivesText);
+    if (objectivesFile) formData.append('learning_objectives_file', objectivesFile);
+
+    formData.append('rubric', rubricText);
+    if (rubricFile) formData.append('rubric_file', rubricFile);
+
+    formData.append('instructions', instructionsText);
+    if (instructionsFile) formData.append('instructions_file', instructionsFile);
+
+    formData.append('submission_text', submissionText);
+    if (submissionFile) formData.append('document', submissionFile);
+
+    if (spreadsheetFile) formData.append('spreadsheet', spreadsheetFile);
 
     onSubmit(formData);
   };
 
-  return (
-    <form className="assessment-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
+  const renderInputBlock = (label, textLabel, textPlaceholder, textVal, setText, fileVal, setFile, dropzone) => (
+    <div className="input-group" style={{ marginBottom: '1.5rem', background: 'var(--bg-card)', padding: '1rem', borderRadius: '8px' }}>
+      <label style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text)', marginBottom: '0.8rem', display: 'block' }}>{label}</label>
       
-      <div className="input-group">
-        <label>Learning Objectives</label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
         <textarea 
-          placeholder="e.g., Student will demonstrate understanding of descriptive statistics..."
-          value={objectives} 
-          onChange={e => setObjectives(e.target.value)} 
-          required
+          placeholder={textPlaceholder}
+          value={textVal} 
+          onChange={e => setText(e.target.value)} 
+          style={{ minHeight: '60px' }}
         />
-      </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>OR MATCH WITH FILE</span>
+          <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+        </div>
 
-      <div className="input-group">
-        <label>Grading Rubric</label>
-        <textarea 
-          placeholder="e.g., A = Excellent logic and correct formulas. B = Good logic but minor errors..."
-          value={rubric} 
-          onChange={e => setRubric(e.target.value)} 
-          required
-        />
-      </div>
-
-      <div className="input-group">
-        <label>Instructions to AI Grader (Optional)</label>
-        <textarea 
-          placeholder="Any specific nuances or harshness level?"
-          value={instructions} 
-          onChange={e => setInstructions(e.target.value)} 
-        />
-      </div>
-
-      <div className="input-group">
-        <label>Student Written Report (.docx, .txt)</label>
-        {!docFile ? (
-           <div {...getDocProps()} className={`dropzone ${isDocActive ? 'active' : ''}`}>
-             <input {...getDocInputProps()} />
-             <UploadCloud size={24} color="var(--primary)" style={{ marginBottom: '10px' }} />
-             <p>Drag & drop submission here</p>
+        {!fileVal ? (
+           <div {...dropzone.getRootProps()} className={`dropzone ${dropzone.isDragActive ? 'active' : ''}`} style={{ padding: '1rem', minHeight: 'auto' }}>
+             <input {...dropzone.getInputProps()} />
+             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
+               <UploadCloud size={18} color="var(--primary)" />
+               <p style={{ margin: 0, fontSize: '0.9rem' }}>Upload .txt or .docx</p>
+             </div>
            </div>
         ) : (
-          <div className="file-item">
-            <FileText size={18} color="var(--primary)" />
-            <span style={{flex: 1, overflow: 'hidden', textOverflow: 'ellipsis'}}>{docFile.name}</span>
-            <X size={18} style={{cursor: 'pointer'}} onClick={() => setDocFile(null)} />
+          <div className="file-item" style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '0.5rem 1rem', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <FileText size={16} />
+            <span style={{flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.9rem'}}>{fileVal.name}</span>
+            <X size={16} style={{cursor: 'pointer'}} onClick={(e) => { e.stopPropagation(); setFile(null); }} />
           </div>
         )}
       </div>
+    </div>
+  );
 
-      <div className="input-group">
-        <label>Supporting Data (.csv, .xlsx) - Optional</label>
+  return (
+    <form className="assessment-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
+      
+      {renderInputBlock(
+        "1. Learning Objectives", 
+        "Text / Links", 
+        "Enter text or a URL containing the learning objectives...",
+        objectivesText, setObjectivesText,
+        objectivesFile, setObjectivesFile,
+        objDrop
+      )}
+
+      {renderInputBlock(
+        "2. Grading Rubric", 
+        "Text / Links", 
+        "Enter text or a URL containing the grading rubric...",
+        rubricText, setRubricText,
+        rubricFile, setRubricFile,
+        rubDrop
+      )}
+
+      {renderInputBlock(
+        "3. Instructions to AI Grader (Optional)", 
+        "Text / Links", 
+        "Enter text or a URL containing specific instructions...",
+        instructionsText, setInstructionsText,
+        instructionsFile, setInstructionsFile,
+        instDrop
+      )}
+
+      {renderInputBlock(
+        "4. Student Submission", 
+        "Text / Link (e.g. Gemini Chat)", 
+        "Enter submission text or a Gemini Chat Share Link (https://g.co/gemini/share/...)",
+        submissionText, setSubmissionText,
+        submissionFile, setSubmissionFile,
+        subDrop
+      )}
+
+      <div className="input-group" style={{ marginBottom: '1.5rem', background: 'var(--bg-card)', padding: '1rem', borderRadius: '8px' }}>
+        <label style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text)', marginBottom: '0.8rem', display: 'block' }}>5. Supporting Data (.csv, .xlsx) - Optional</label>
          {!spreadsheetFile ? (
-           <div {...getSheetProps()} className={`dropzone ${isSheetActive ? 'active' : ''}`}>
+           <div {...getSheetProps()} className={`dropzone ${isSheetActive ? 'active' : ''}`} style={{ padding: '1rem', minHeight: 'auto' }}>
              <input {...getSheetInputProps()} />
-             <UploadCloud size={24} color="var(--success)" style={{ marginBottom: '10px' }} />
-             <p>Drag & drop dataset here</p>
+             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
+               <UploadCloud size={18} color="var(--success)" />
+               <p style={{ margin: 0, fontSize: '0.9rem' }}>Upload dataset for cross-verification</p>
+             </div>
            </div>
         ) : (
-          <div className="file-item">
-            <Table size={18} color="var(--success)" />
-            <span style={{flex: 1, overflow: 'hidden', textOverflow: 'ellipsis'}}>{spreadsheetFile.name}</span>
-            <X size={18} style={{cursor: 'pointer'}} onClick={() => setSpreadsheetFile(null)} />
+          <div className="file-item" style={{ background: '#e6f4ea', color: 'var(--success)', padding: '0.5rem 1rem', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Table size={16} />
+            <span style={{flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.9rem'}}>{spreadsheetFile.name}</span>
+            <X size={16} style={{cursor: 'pointer'}} onClick={(e) => { e.stopPropagation(); setSpreadsheetFile(null); }} />
           </div>
         )}
       </div>
 
-      <button type="submit" className="btn" disabled={isLoading || !docFile || !objectives || !rubric}>
-        {isLoading ? 'Analyzing...' : 'Generate Assessment'}
+      <button type="submit" className="btn" disabled={isLoading} style={{ marginTop: '1rem' }}>
+        {isLoading ? 'Analyzing Submission...' : 'Generate Assessment'}
       </button>
 
     </form>
